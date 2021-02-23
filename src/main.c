@@ -149,148 +149,152 @@ Vector3 transform(Matrix4 matrix, Vector3 vector, float w) {
 	return result;
 }
 
-void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity* entity) {
-	// Rotation angles, y-axis then x-axis
-	uint32_t lineColor = 0xffffffff;
+void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int entityCount) {
+	for (int k = 0; k < entityCount; k++) {
+		Entity* entity = entityList[k];
 
-	//Scale Matrix
-	Matrix4 scale_mat;
-	{
-		Vector3 s = entity->scale;
-		float temp[16] = {  s.x, 0  , 0  , 0,
-					   	    0  , s.y, 0  , 0,
-					        0  , 0  , s.z, 0,
-					        0  , 0  , 0  , 1};
-		memcpy((void*) scale_mat.values, temp, 16 * sizeof(float));
-	}
-	// Y-Axis Rotation Matrix
-	Matrix4 y_rot_mat;
-	{
-		float a = entity->rotation.y;
-		float temp[16] = { cosf(a), 0, sinf(a), 0,
-					   	   0      , 1, 0      , 0,
-					      -sinf(a), 0, cosf(a), 0,
-					       0      , 0, 0      , 1};
-		memcpy((void*) y_rot_mat.values, temp, 16 * sizeof(float));
-	}
-	// X-Axis Rotation Matrix
-	Matrix4 x_rot_mat;
-	{
-		float b = entity->rotation.x;
-		float temp[16] = {1,  0      , 0      , 0,
-					 	  0,  cosf(b), sinf(b), 0,
-					 	  0, -sinf(b), cosf(b), 0,
-	 	 				  0,  0      , 0      , 1};
-		memcpy((void*) x_rot_mat.values, temp, 16 * sizeof(float));
-	}
-	Matrix4 world_translate;
-	{
-		Vector3 p = entity->position;
-		float temp[16] = { 1, 0, 0, p.x,
-					 	   0, 1, 0, p.y,
-					 	   0, 0, 1, p.z,
-	 	 				   0, 0, 0, 1  };
-		memcpy((void*) world_translate.values, temp, 16 * sizeof(float));
-	}
-	// Camera Rotation Matrix
-	Matrix4 camera_y_rotation;
-	{
-		float a = camera->rotation.y;
-		float temp[16] = { cosf(-a), 0, sinf(-a), 0,
-					   	   0       , 1, 0       , 0,
-					      -sinf(-a), 0, cosf(-a), 0,
-					       0       , 0, 0       , 1};
-		memcpy((void*) camera_y_rotation.values, temp, 16 * sizeof(float));
-	}
-	// Camera translate Matrix	
-	Matrix4 camera_translate;
-	{
-		float temp[16] = { 1, 0, 0, -camera->position.x,
-					 	   0, 1, 0, -camera->position.y,
-					 	   0, 0, 1, -camera->position.z,
-	 	 				   0, 0, 0, 1        };
-		memcpy((void*) camera_translate.values, temp, 16 * sizeof(float));
-	}
-	Matrix4 camera_inv_translate;
-	{
-		float temp[16] = { 1, 0, 0, camera->position.x,
-					 	   0, 1, 0, camera->position.y,
-					 	   0, 0, 1, camera->position.z,
-	 	 				   0, 0, 0, 1        };
-		memcpy((void*) camera_inv_translate.values, temp, 16 * sizeof(float));
-	}
-	// Camera translate Matrix	
-	Matrix4 ortho_projection;
-	{
-		float temp[16] = { 1.f/VIEW_WIDTH, 0              ,  0                   ,   0                                 ,
-					 	   0             , 1.f/VIEW_HEIGHT,  0                   ,   0                                 ,
-					 	   0             , 0              , -2.f/(Z_FAR - Z_NEAR), -(Z_FAR + Z_NEAR) / (Z_FAR - Z_NEAR),
-	 	 				   0             , 0              ,  0                   ,   1                                 };
-		memcpy((void*) ortho_projection.values, temp, 16 * sizeof(float));
-	}
-	// Perspective Projection
-	Matrix4 perspective_projection;
-	{
-		float temp[16] = { atanf((FOV_X/VIEW_WIDTH)/2), 0                           ,  0                                  ,   0                                   ,
-					 	   0                          , atanf((FOV_Y/VIEW_HEIGHT)/2),  0                                  ,   0                                   ,
-					 	   0                          , 0                           , -(Z_FAR + Z_NEAR) / (Z_FAR - Z_NEAR), (-2 * (Z_FAR*Z_NEAR))/(Z_FAR - Z_NEAR),
-	 	 				   0                          , 0                           , -1                                  ,   0                                   };
-		memcpy((void*) perspective_projection.values, temp, 16 * sizeof(float));
-	}
-	Matrix4 correct_for_screen;
-	{
-		float temp[16] = { SCREEN_WIDTH/2, 0              , 0, SCREEN_WIDTH/2 ,
-					 	   0             , SCREEN_HEIGHT/2, 0, SCREEN_HEIGHT/2,
-					 	   0             , 0              , 1, 1              ,
-	 	 				   0             , 0              , 0, 1              };
-		memcpy((void*) correct_for_screen.values, temp, 16 * sizeof(float));
-	}
-	
-	// Combine matrices into one transformation matrix
-	// Model Space ---> World Space
-	Matrix4 final_transform = mul_matrix4(x_rot_mat, scale_mat);
-	final_transform = mul_matrix4(y_rot_mat, final_transform);	
-	final_transform = mul_matrix4(world_translate, final_transform);
+		// Rotation angles, y-axis then x-axis
+		uint32_t lineColor = 0xffffffff;
 
-	// World Space ---> View Space	
-	final_transform = mul_matrix4(camera_translate, final_transform);	
-	final_transform = mul_matrix4(camera_translate, final_transform);	
-	final_transform = mul_matrix4(camera_y_rotation, final_transform);	
-	final_transform = mul_matrix4(camera_inv_translate, final_transform);	
-
-	// View Space ---> Projection Space
-	final_transform = mul_matrix4(perspective_projection, final_transform);	
-
-	for (int i = 0; i < entity->mesh.poly_count; i++) {	
-		Triangle* poly = &entity->mesh.polygons[i];
-		Triangle display_poly;
-		bool is_vector_culled[3] = {false, false, false};		
-
-		for (int j = 0; j < 3; j++) {
-			// Apply all transformations
-			display_poly.vectors[j] = transform(final_transform, poly->vectors[j], 1);
-			
-			// Cull vertices
-			if (display_poly.vectors[j].x < -1.0f || display_poly.vectors[j].x > 1.0f ||
-				display_poly.vectors[j].y < -1.0f || display_poly.vectors[j].y > 1.0f ||
-				display_poly.vectors[j].z < -1.0f || display_poly.vectors[j].z > 1.0f) {
-				is_vector_culled[j] = true;
-			}
-
-			// Transform to Screen Friendly view
-			display_poly.vectors[j] = transform(correct_for_screen, display_poly.vectors[j], 1);
+		//Scale Matrix
+		Matrix4 scale_mat;
+		{
+			Vector3 s = entity->scale;
+			float temp[16] = {  s.x, 0  , 0  , 0,
+								0  , s.y, 0  , 0,
+								0  , 0  , s.z, 0,
+								0  , 0  , 0  , 1 };
+			memcpy((void*) scale_mat.values, temp, 16 * sizeof(float));
+		}
+		// Y-Axis Rotation Matrix
+		Matrix4 y_rot_mat;
+		{
+			float a = entity->rotation.y;
+			float temp[16] = { cosf(a),  0, sinf(a), 0,
+							   0      ,  1, 0      , 0,
+							   -sinf(a), 0, cosf(a), 0,
+							   0      ,  0, 0      , 1 };
+			memcpy((void*) y_rot_mat.values, temp, 16 * sizeof(float));
+		}
+		// X-Axis Rotation Matrix
+		Matrix4 x_rot_mat;
+		{
+			float b = entity->rotation.x;
+			float temp[16] = { 1,  0      , 0      , 0,
+							   0,  cosf(b), sinf(b), 0,
+							   0, -sinf(b), cosf(b), 0,
+							   0,  0      , 0      , 1 };
+			memcpy((void*) x_rot_mat.values, temp, 16 * sizeof(float));
+		}
+		Matrix4 world_translate;
+		{
+			Vector3 p = entity->position;
+			float temp[16] = { 1, 0, 0, p.x,
+							   0, 1, 0, p.y,
+							   0, 0, 1, p.z,
+							   0, 0, 0, 1  };
+			memcpy((void*) world_translate.values, temp, 16 * sizeof(float));
+		}
+		// Camera Rotation Matrix
+		Matrix4 camera_y_rotation;
+		{
+			float a = camera->rotation.y;
+			float temp[16] = { cosf(-a),  0, sinf(-a), 0,
+							   0       ,  1, 0       , 0,
+							   -sinf(-a), 0, cosf(-a), 0,
+							   0       ,  0, 0       , 1 };
+			memcpy((void*) camera_y_rotation.values, temp, 16 * sizeof(float));
+		}
+		// Camera translate Matrix	
+		Matrix4 camera_translate;
+		{
+			float temp[16] = { 1, 0, 0, -camera->position.x,
+							   0, 1, 0, -camera->position.y,
+							   0, 0, 1, -camera->position.z,
+							   0, 0, 0, 1        };
+			memcpy((void*) camera_translate.values, temp, 16 * sizeof(float));
+		}
+		Matrix4 camera_inv_translate;
+		{
+			float temp[16] = { 1, 0, 0, camera->position.x,
+							   0, 1, 0, camera->position.y,
+							   0, 0, 1, camera->position.z,
+							   0, 0, 0, 1        };
+			memcpy((void*) camera_inv_translate.values, temp, 16 * sizeof(float));
+		}
+		// Camera translate Matrix	
+		Matrix4 ortho_projection;
+		{
+			float temp[16] = { 1.f/VIEW_WIDTH, 0              ,  0                   ,   0                                 ,
+							   0             , 1.f/VIEW_HEIGHT,  0                   ,   0                                 ,
+							   0             , 0              , -2.f/(Z_FAR - Z_NEAR), -(Z_FAR + Z_NEAR) / (Z_FAR - Z_NEAR),
+							   0             , 0              ,  0                   ,   1                                 };
+			memcpy((void*) ortho_projection.values, temp, 16 * sizeof(float));
+		}
+		// Perspective Projection
+		Matrix4 perspective_projection;
+		{
+			float temp[16] = { atanf((FOV_X/VIEW_WIDTH)/2), 0                           ,  0                                  ,   0                                   ,
+							   0                          , atanf((FOV_Y/VIEW_HEIGHT)/2),  0                                  ,   0                                   ,
+							   0                          , 0                           , -(Z_FAR + Z_NEAR) / (Z_FAR - Z_NEAR), (-2 * (Z_FAR*Z_NEAR))/(Z_FAR - Z_NEAR),
+							   0                          , 0                           , -1                                  ,   0                                   };
+			memcpy((void*) perspective_projection.values, temp, 16 * sizeof(float));
+		}
+		Matrix4 correct_for_screen;
+		{
+			float temp[16] = { SCREEN_WIDTH/2, 0              , 0, SCREEN_WIDTH/2 ,
+							   0             , SCREEN_HEIGHT/2, 0, SCREEN_HEIGHT/2,
+							   0             , 0              , 1, 1              ,
+							   0             , 0              , 0, 1              };
+			memcpy((void*) correct_for_screen.values, temp, 16 * sizeof(float));
 		}
 		
-		if (!is_vector_culled[0] && !is_vector_culled[1]) {
-			draw_line(display_poly.vectors[0], display_poly.vectors[1], lineColor, pixel_buffer);		
-		}		
+		// Combine matrices into one transformation matrix
+		// Model Space ---> World Space
+		Matrix4 final_transform = mul_matrix4(x_rot_mat, scale_mat);
+		final_transform = mul_matrix4(y_rot_mat, final_transform);	
+		final_transform = mul_matrix4(world_translate, final_transform);
 
-		if(!is_vector_culled[1] && !is_vector_culled[2]) {
-			draw_line(display_poly.vectors[1], display_poly.vectors[2], lineColor, pixel_buffer);
-		}		
+		// World Space ---> View Space	
+		final_transform = mul_matrix4(camera_translate, final_transform);	
+		final_transform = mul_matrix4(camera_translate, final_transform);	
+		final_transform = mul_matrix4(camera_y_rotation, final_transform);	
+		final_transform = mul_matrix4(camera_inv_translate, final_transform);	
 
-		if(!is_vector_culled[0] && !is_vector_culled[2]) {
-			draw_line(display_poly.vectors[2], display_poly.vectors[0], lineColor, pixel_buffer);		
+		// View Space ---> Projection Space
+		final_transform = mul_matrix4(perspective_projection, final_transform);	
+
+		for (int i = 0; i < entity->mesh.poly_count; i++) {	
+			Triangle* poly = &entity->mesh.polygons[i];
+			Triangle display_poly;
+			bool is_vector_culled[3] = {false, false, false};		
+
+			for (int j = 0; j < 3; j++) {
+				// Apply all transformations
+				display_poly.vectors[j] = transform(final_transform, poly->vectors[j], 1);
+				
+				// Cull vertices
+				if (display_poly.vectors[j].x < -1.0f || display_poly.vectors[j].x > 1.0f ||
+					display_poly.vectors[j].y < -1.0f || display_poly.vectors[j].y > 1.0f ||
+					display_poly.vectors[j].z < -1.0f || display_poly.vectors[j].z > 1.0f) {
+					is_vector_culled[j] = true;
+				}
+
+				// Transform to Screen Friendly view
+				display_poly.vectors[j] = transform(correct_for_screen, display_poly.vectors[j], 1);
+			}
+			
+			if (!is_vector_culled[0] && !is_vector_culled[1]) {
+				draw_line(display_poly.vectors[0], display_poly.vectors[1], lineColor, pixel_buffer);		
+			}		
+
+			if(!is_vector_culled[1] && !is_vector_culled[2]) {
+				draw_line(display_poly.vectors[1], display_poly.vectors[2], lineColor, pixel_buffer);
+			}		
+
+			if(!is_vector_culled[0] && !is_vector_culled[2]) {
+				draw_line(display_poly.vectors[2], display_poly.vectors[0], lineColor, pixel_buffer);		
+			}
 		}
 	}
 }
@@ -313,7 +317,7 @@ int main(int argc, char* args[]) {
 		SDL_WINDOWPOS_CENTERED,
 		SCREEN_WIDTH,
 		SCREEN_HEIGHT,
-		SDL_WINDOW_FULLSCREEN_DESKTOP
+		0 // SDL_WINDOW_FULLSCREEN_DESKTOP
 	);
 
 	if (window == NULL) {
@@ -337,17 +341,29 @@ int main(int argc, char* args[]) {
 	Entity camera = {{0}};
 	Vector3 temp_cam_pos = {0};
 	camera.position = temp_cam_pos;
-	Entity cube_entity = {{0}};
 	Mesh cube;
 	Vector3 mesh_origin = {0, 0, -200};
 	cube.origin = mesh_origin;
 	cube.poly_count = 12;
 	cube.polygons = malloc(cube.poly_count * sizeof(Triangle));
+	Entity cube_entity = {{0}};
 	cube_entity.mesh = cube;
 	cube_entity.position = mesh_origin;
 	//cube_entity.rotation.x = 0.5;
 	Vector3 tmpScale = {100, 100, 100};
 	cube_entity.scale = tmpScale;
+
+	Entity cube_entity2 = {{0}};
+	cube_entity2.mesh = cube;
+	Vector3 cube_pos = {300, 0, 200};
+	cube_entity2.position = cube_pos;
+	Vector3 temp_scale2 = {50, 50, 50};
+	cube_entity2.scale = temp_scale2;
+
+	int entity_count = 2;
+	Entity** entity_list = (Entity**)malloc(entity_count * sizeof(Entity*));
+	entity_list[0] = &cube_entity;
+	entity_list[1] = &cube_entity2;
 
 	// Vertices
 	Vector3 v0 = { 1, -1, -1};
@@ -398,7 +414,7 @@ int main(int argc, char* args[]) {
 	cube.polygons[11].vectors[2] = v1;
 	
 	// Main Loop
-	while(running) {
+	while (running) {
 		int current_time = SDL_GetTicks();
 		
 		// SDL Event Loop
@@ -440,11 +456,11 @@ int main(int argc, char* args[]) {
 		}
 
 		global_counter++;
-		cube_entity.rotation.x += 0.01;
-		cube_entity.rotation.y += 0.01;
+		cube_entity2.rotation.x += 0.01;
+		cube_entity2.rotation.y += 0.01;
 		
 		// Where all the rendering happens
-		draw(&pixel_buffer, &camera, &cube_entity);
+		draw(&pixel_buffer, &camera, entity_list, entity_count);
 
 		// Rendering pixel buffer to the screen
 		SDL_UpdateTexture(screen_texture, NULL, pixel_buffer.pixels, SCREEN_WIDTH * sizeof(uint32_t));		
