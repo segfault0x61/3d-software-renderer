@@ -257,9 +257,9 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 
 		// World Space ---> View Space	
 		final_transform = mul_matrix4(camera_translate, final_transform);	
-		final_transform = mul_matrix4(camera_translate, final_transform);	
+		// final_transform = mul_matrix4(camera_translate, final_transform);	
 		final_transform = mul_matrix4(camera_y_rotation, final_transform);	
-		final_transform = mul_matrix4(camera_inv_translate, final_transform);	
+		// final_transform = mul_matrix4(camera_inv_translate, final_transform);	
 
 		// View Space ---> Projection Space
 		final_transform = mul_matrix4(perspective_projection, final_transform);	
@@ -297,6 +297,68 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 			}
 		}
 	}
+}
+
+Mesh load_mesh_from_file(char* fileName) {
+	FILE* file = fopen(fileName, "r");
+	Mesh mesh = {{0}};	
+	int line_count = 0;
+
+	if (file == NULL) {
+		SDL_Log("Could not open mesh file.");
+	}
+
+	// Save the pos beginning of file
+	fpos_t filePos;
+	fgetpos(file, &filePos);
+
+	// Count the number of lines in the file
+	{
+		int ch;
+		while (EOF != (ch=getc(file)))
+	   		if (ch=='\n')
+	        	++line_count;
+    }
+
+    mesh.poly_count = line_count;
+    mesh.polygons = (Triangle*)malloc(line_count * sizeof(Triangle));
+
+    // Go back to beginning of file
+    fsetpos(file, &filePos);
+	char line[256] = {0};
+	int i = 0;
+	int k = 0;
+	fgets(line, 255, file);
+	while (!feof(file))
+	{
+		float vertices[9] = {0};
+		// Split line by spaces and store floats
+		k = 0;
+		while (k < 9)
+		{
+			if (k == 0)
+				vertices[k] = atof(strtok(line, " "));
+			else
+				vertices[k] = atof(strtok(NULL, " "));
+			k++;
+		}
+		/*SDL_Log("%f, %f, %f, %f, %f, %f, %f, %f, %f",
+			vertices[0], vertices[1], vertices[2],
+			vertices[3], vertices[4], vertices[5],
+			vertices[6], vertices[7], vertices[8]);*/
+		mesh.polygons[i].vectors[0].x = vertices[0];
+		mesh.polygons[i].vectors[0].y = vertices[1];
+		mesh.polygons[i].vectors[0].z = vertices[2];
+		mesh.polygons[i].vectors[1].x = vertices[3];
+		mesh.polygons[i].vectors[1].y = vertices[4];
+		mesh.polygons[i].vectors[1].z = vertices[5];
+		mesh.polygons[i].vectors[2].x = vertices[6];
+		mesh.polygons[i].vectors[2].y = vertices[7];
+		mesh.polygons[i].vectors[2].z = vertices[8];
+		fgets(line, 255, file);
+		i++;
+	}
+	return mesh;
 }
 
 int main(int argc, char* args[]) {
@@ -341,15 +403,14 @@ int main(int argc, char* args[]) {
 	Entity camera = {{0}};
 	Vector3 temp_cam_pos = {0};
 	camera.position = temp_cam_pos;
-	Mesh cube;
+	Mesh cube = load_mesh_from_file("./res/meshes/cube.raw");
 	Vector3 mesh_origin = {0, 0, -200};
 	cube.origin = mesh_origin;
-	cube.poly_count = 12;
-	cube.polygons = malloc(cube.poly_count * sizeof(Triangle));
 	Entity cube_entity = {{0}};
 	cube_entity.mesh = cube;
 	cube_entity.position = mesh_origin;
 	//cube_entity.rotation.x = 0.5;
+	cube_entity.rotation.x = -M_PI / 2;
 	Vector3 tmpScale = {100, 100, 100};
 	cube_entity.scale = tmpScale;
 
@@ -364,54 +425,6 @@ int main(int argc, char* args[]) {
 	Entity** entity_list = (Entity**)malloc(entity_count * sizeof(Entity*));
 	entity_list[0] = &cube_entity;
 	entity_list[1] = &cube_entity2;
-
-	// Vertices
-	Vector3 v0 = { 1, -1, -1};
-	Vector3 v1 = { 1,  1, -1};
-	Vector3 v2 = {-1,  1, -1};
-	Vector3 v3 = {-1, -1, -1};
-	Vector3 v4 = { 1, -1,  1};
-	Vector3 v5 = { 1,  1,  1};
-	Vector3 v6 = {-1,  1,  1};
-	Vector3 v7 = {-1, -1,  1};
-	
-	// Polygons
-	cube.polygons[0].vectors[0] = v0;
-	cube.polygons[0].vectors[1] = v1;
-	cube.polygons[0].vectors[2] = v2;
-	cube.polygons[1].vectors[0] = v3;
-	cube.polygons[1].vectors[1] = v0;
-	cube.polygons[1].vectors[2] = v2;
-	cube.polygons[2].vectors[0] = v7;
-	cube.polygons[2].vectors[1] = v6;
-	cube.polygons[2].vectors[2] = v5;
-	cube.polygons[3].vectors[0] = v4;
-	cube.polygons[3].vectors[1] = v7;
-	cube.polygons[3].vectors[2] = v5;
-	cube.polygons[4].vectors[0] = v4;
-	cube.polygons[4].vectors[1] = v5;
-	cube.polygons[4].vectors[2] = v1;
-	cube.polygons[5].vectors[0] = v0;
-	cube.polygons[5].vectors[1] = v4;
-	cube.polygons[5].vectors[2] = v1;
-	cube.polygons[6].vectors[0] = v3;
-	cube.polygons[6].vectors[1] = v2;
-	cube.polygons[6].vectors[2] = v6;
-	cube.polygons[7].vectors[0] = v7;
-	cube.polygons[7].vectors[1] = v3;
-	cube.polygons[7].vectors[2] = v6;
-	cube.polygons[8].vectors[0] = v7;
-	cube.polygons[8].vectors[1] = v4;
-	cube.polygons[8].vectors[2] = v0;
-	cube.polygons[9].vectors[0] = v3;
-	cube.polygons[9].vectors[1] = v7;
-	cube.polygons[9].vectors[2] = v0;
-	cube.polygons[10].vectors[0] = v6;
-	cube.polygons[10].vectors[1] = v5;
-	cube.polygons[10].vectors[2] = v1;
-	cube.polygons[11].vectors[0] = v2;
-	cube.polygons[11].vectors[1] = v6;
-	cube.polygons[11].vectors[2] = v1;
 	
 	// Main Loop
 	while (running) {
