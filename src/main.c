@@ -10,19 +10,16 @@
 #define M_PI 3.14159265358979323846
 
 // Screen constants
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 1366;
+const int SCREEN_HEIGHT = 768;
 
 // Projection Constants
-const int VIEW_WIDTH = 640;
-const int VIEW_HEIGHT = 480;
+const int VIEW_WIDTH = 1366;
+const int VIEW_HEIGHT = 768;
 const int Z_FAR = 500;
 const int Z_NEAR = 10;
-const float FOV_X = 1280;
-const float FOV_Y = 960;
-
-// Temp Globals
-static uint32_t global_counter;
+const float FOV_X = 10000;
+const float FOV_Y = 10000;
 
 typedef struct {
 	uint32_t* pixels;
@@ -45,16 +42,10 @@ typedef struct {
 } Matrix4;
 
 typedef struct {
-	Vector3 origin;
+	// Vector3 origin;
 	int poly_count;
 	Triangle* polygons;
 } Mesh;
-
-typedef struct {
-	Matrix4 rotation;
-	Matrix4 translation;
-	Matrix4 scale;
-} Transform;
 
 typedef struct {
 	Vector3 position;
@@ -156,7 +147,7 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 		// Rotation angles, y-axis then x-axis
 		uint32_t lineColor = 0xffffffff;
 
-		//Scale Matrix
+		// Scale Matrix
 		Matrix4 scale_mat;
 		{
 			Vector3 s = entity->scale;
@@ -165,6 +156,17 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 								0  , 0  , s.z, 0,
 								0  , 0  , 0  , 1 };
 			memcpy((void*) scale_mat.values, temp, 16 * sizeof(float));
+		}
+
+		//Z-Axis Rotation Matrix
+		Matrix4 z_rot_mat;
+		{
+			float c = entity->rotation.z;
+			float temp[16] = { cosf(c), sinf(c), 0, 0,
+						   	  -sinf(c), cosf(c), 0, 0,
+						       0      , 0      , 1, 0,
+						       0      , 0      , 0, 1 };
+			memcpy((void*) z_rot_mat.values, temp, 16*sizeof(float));
 		}
 		// Y-Axis Rotation Matrix
 		Matrix4 y_rot_mat;
@@ -253,25 +255,23 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 		// Model Space ---> World Space
 		Matrix4 final_transform = mul_matrix4(x_rot_mat, scale_mat);
 		final_transform = mul_matrix4(y_rot_mat, final_transform);	
+		final_transform = mul_matrix4(z_rot_mat, final_transform);	
 		final_transform = mul_matrix4(world_translate, final_transform);
 
 		// World Space ---> View Space	
 		final_transform = mul_matrix4(camera_translate, final_transform);	
-		final_transform = mul_matrix4(camera_translate, final_transform);	
 		final_transform = mul_matrix4(camera_y_rotation, final_transform);	
-		final_transform = mul_matrix4(camera_inv_translate, final_transform);	
 
 		// View Space ---> Projection Space
 		final_transform = mul_matrix4(perspective_projection, final_transform);	
 
 		for (int i = 0; i < entity->mesh.poly_count; i++) {	
-			Triangle* poly = &entity->mesh.polygons[i];
-			Triangle display_poly;
+			Triangle display_poly = entity->mesh.polygons[i];
 			bool is_vector_culled[3] = {false, false, false};		
 
 			for (int j = 0; j < 3; j++) {
 				// Apply all transformations
-				display_poly.vectors[j] = transform(final_transform, poly->vectors[j], 1);
+				display_poly.vectors[j] = transform(final_transform, display_poly.vectors[j], 1);
 				
 				// Cull vertices
 				if (display_poly.vectors[j].x < -1.0f || display_poly.vectors[j].x > 1.0f ||
@@ -280,10 +280,11 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 					is_vector_culled[j] = true;
 				}
 
-				// Transform to Screen Friendly view
+				// Projection Space ---> Screen Friendly
 				display_poly.vectors[j] = transform(correct_for_screen, display_poly.vectors[j], 1);
 			}
 			
+			// Only draw lines between vectors that haven't been culled
 			if (!is_vector_culled[0] && !is_vector_culled[1]) {
 				draw_line(display_poly.vectors[0], display_poly.vectors[1], lineColor, pixel_buffer);		
 			}		
@@ -299,6 +300,66 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 	}
 }
 
+Mesh load_mesh_from_file(char* fileName) {
+	FILE* file = fopen(fileName, "r");
+	Mesh mesh = {0};	
+	int line_count = 0;
+
+	if (file == NULL) {
+		SDL_Log("Could not open mesh file.");
+	}
+
+	// Save the pos beginning of file
+	fpos_t filePos;
+	fgetpos(file, &filePos);
+
+	// Count the number of lines in the file
+	{
+		int ch;
+		while (EOF != (ch=getc(file)))
+	   		if (ch=='\n')
+	        	++line_count;
+    }
+
+    mesh.poly_count = line_count;
+    mesh.polygons = (Triangle*)malloc(line_count * sizeof(Triangle));
+
+    // Go back to beginning of file
+    fsetpos(file, &filePos);
+	char line[256] = {0};
+	int i = 0;
+	int k = 0;
+	fgets(line, 255, file);
+	while (!feof(file))
+	{
+		float vertices[9] = {0};
+		// Split line by spaces and store floats
+		k = 0;
+		while (k < 9)
+		{
+			if (k == 0)
+				vertices[k] = atof(strtok(line, " "));
+			else
+				vertices[k] = atof(strtok(NULL, " "));
+			k++;
+		}
+
+		// Store loaded vertices into polygon return value
+		mesh.polygons[i].vectors[0].x = vertices[0];
+		mesh.polygons[i].vectors[0].y = vertices[1];
+		mesh.polygons[i].vectors[0].z = vertices[2];
+		mesh.polygons[i].vectors[1].x = vertices[3];
+		mesh.polygons[i].vectors[1].y = vertices[4];
+		mesh.polygons[i].vectors[1].z = vertices[5];
+		mesh.polygons[i].vectors[2].x = vertices[6];
+		mesh.polygons[i].vectors[2].y = vertices[7];
+		mesh.polygons[i].vectors[2].z = vertices[8];
+		fgets(line, 255, file);
+		i++;
+	}
+	return mesh;
+}
+
 int main(int argc, char* args[]) {
 	SDL_Window* window = NULL;
 	SDL_Renderer* renderer = NULL;
@@ -306,6 +367,9 @@ int main(int argc, char* args[]) {
 	uint32_t* pixels = NULL;
 	bool running = true;
 
+	/**
+	 * SDL Initialization
+	 */
 	if (SDL_Init( SDL_INIT_EVERYTHING) < 0) {
 		printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
 		return 0;
@@ -317,7 +381,7 @@ int main(int argc, char* args[]) {
 		SDL_WINDOWPOS_CENTERED,
 		SCREEN_WIDTH,
 		SCREEN_HEIGHT,
-		0 // SDL_WINDOW_FULLSCREEN_DESKTOP
+		SDL_WINDOW_FULLSCREEN_DESKTOP
 	);
 
 	if (window == NULL) {
@@ -334,86 +398,47 @@ int main(int argc, char* args[]) {
 		SCREEN_HEIGHT
 	);
 
+	// Open joystick
+	SDL_Joystick* game_pad = SDL_JoystickOpen(0);
+
 	pixels = (uint32_t*) malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
 	PixelBuffer pixel_buffer = {pixels, SCREEN_WIDTH, SCREEN_HEIGHT};
 
-	// temp
+	/**
+	 * Initialize meshes and entities
+	 */
+	Mesh cube  = load_mesh_from_file("./res/meshes/cube.raw");
+	Mesh plane = load_mesh_from_file("./res/meshes/plane.raw");
+	Mesh monkey  = load_mesh_from_file("./res/meshes/monkey.raw");
+
+	// Initialize entities
 	Entity camera = {{0}};
-	Vector3 temp_cam_pos = {0};
-	camera.position = temp_cam_pos;
-	Mesh cube;
-	Vector3 mesh_origin = {0, 0, -200};
-	cube.origin = mesh_origin;
-	cube.poly_count = 12;
-	cube.polygons = malloc(cube.poly_count * sizeof(Triangle));
-	Entity cube_entity = {{0}};
-	cube_entity.mesh = cube;
-	cube_entity.position = mesh_origin;
-	//cube_entity.rotation.x = 0.5;
-	Vector3 tmpScale = {100, 100, 100};
-	cube_entity.scale = tmpScale;
+	Entity cube_entity = {  .position={0, 0, -200},    .mesh=monkey, 
+                            .rotation={-M_PI/2, 0, 0}, .scale={100, 100, 100}};
+	Entity cube_entity2 = { .position={300, 0, 200},   .mesh=cube,
+                            .scale   ={50, 50, 50}};
 
-	Entity cube_entity2 = {{0}};
-	cube_entity2.mesh = cube;
-	Vector3 cube_pos = {300, 0, 200};
-	cube_entity2.position = cube_pos;
-	Vector3 temp_scale2 = {50, 50, 50};
-	cube_entity2.scale = temp_scale2;
+	// Temp corridor
+	Entity hall1 = { .position={-300, 0, 200},  .mesh=plane,
+                     .scale   ={50, 50, 50}};
+	Entity hall2 = { .position={-300, 50, 150}, .mesh=plane,
+                     .rotation={M_PI/2, 0, 0},  .scale={50, 50, 50}};
+	Entity hall3 = { .position={-300, 0, 100},  .mesh=plane,
+                     .scale   ={50, 50, 50}};
 
-	int entity_count = 2;
+	// Create entity list and fill with entities
+	int entity_count = 5;
+
 	Entity** entity_list = (Entity**)malloc(entity_count * sizeof(Entity*));
 	entity_list[0] = &cube_entity;
 	entity_list[1] = &cube_entity2;
-
-	// Vertices
-	Vector3 v0 = { 1, -1, -1};
-	Vector3 v1 = { 1,  1, -1};
-	Vector3 v2 = {-1,  1, -1};
-	Vector3 v3 = {-1, -1, -1};
-	Vector3 v4 = { 1, -1,  1};
-	Vector3 v5 = { 1,  1,  1};
-	Vector3 v6 = {-1,  1,  1};
-	Vector3 v7 = {-1, -1,  1};
+	entity_list[2] = &hall1;
+	entity_list[3] = &hall2;
+	entity_list[4] = &hall3;
 	
-	// Polygons
-	cube.polygons[0].vectors[0] = v0;
-	cube.polygons[0].vectors[1] = v1;
-	cube.polygons[0].vectors[2] = v2;
-	cube.polygons[1].vectors[0] = v3;
-	cube.polygons[1].vectors[1] = v0;
-	cube.polygons[1].vectors[2] = v2;
-	cube.polygons[2].vectors[0] = v7;
-	cube.polygons[2].vectors[1] = v6;
-	cube.polygons[2].vectors[2] = v5;
-	cube.polygons[3].vectors[0] = v4;
-	cube.polygons[3].vectors[1] = v7;
-	cube.polygons[3].vectors[2] = v5;
-	cube.polygons[4].vectors[0] = v4;
-	cube.polygons[4].vectors[1] = v5;
-	cube.polygons[4].vectors[2] = v1;
-	cube.polygons[5].vectors[0] = v0;
-	cube.polygons[5].vectors[1] = v4;
-	cube.polygons[5].vectors[2] = v1;
-	cube.polygons[6].vectors[0] = v3;
-	cube.polygons[6].vectors[1] = v2;
-	cube.polygons[6].vectors[2] = v6;
-	cube.polygons[7].vectors[0] = v7;
-	cube.polygons[7].vectors[1] = v3;
-	cube.polygons[7].vectors[2] = v6;
-	cube.polygons[8].vectors[0] = v7;
-	cube.polygons[8].vectors[1] = v4;
-	cube.polygons[8].vectors[2] = v0;
-	cube.polygons[9].vectors[0] = v3;
-	cube.polygons[9].vectors[1] = v7;
-	cube.polygons[9].vectors[2] = v0;
-	cube.polygons[10].vectors[0] = v6;
-	cube.polygons[10].vectors[1] = v5;
-	cube.polygons[10].vectors[2] = v1;
-	cube.polygons[11].vectors[0] = v2;
-	cube.polygons[11].vectors[1] = v6;
-	cube.polygons[11].vectors[2] = v1;
-	
-	// Main Loop
+	/**
+	 * Main Loop
+	 */
 	while (running) {
 		int current_time = SDL_GetTicks();
 		
@@ -426,6 +451,33 @@ int main(int argc, char* args[]) {
 				break;
 			}
     	}
+
+		// Joystick Input
+		{
+			const int JOYSTICK_DEAD_ZONE = 8000;
+			int move_vel = 3;
+			if (SDL_JoystickGetAxis(game_pad, 0) < -JOYSTICK_DEAD_ZONE) {
+				camera.position.z += move_vel * cosf(camera.rotation.y - M_PI / 2);
+				camera.position.x += move_vel * sinf(camera.rotation.y - M_PI / 2);
+			} else if (SDL_JoystickGetAxis(game_pad, 0) > JOYSTICK_DEAD_ZONE) { // Right of deadzone
+				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI / 2);
+				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI / 2);
+			} 
+
+			if (SDL_JoystickGetAxis(game_pad, 1) < -JOYSTICK_DEAD_ZONE) { // Left of deadzone
+				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI);
+				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI);
+			} else if(SDL_JoystickGetAxis(game_pad, 1) > JOYSTICK_DEAD_ZONE) { // Right of dead zone
+                camera.position.z += move_vel * cosf(camera.rotation.y);
+				camera.position.x += move_vel * sinf(camera.rotation.y);
+            }
+            
+            if(SDL_JoystickGetAxis(game_pad, 2) < -JOYSTICK_DEAD_ZONE) { // Left of dead zone
+                camera.rotation.y += 0.04 * -SDL_JoystickGetAxis(game_pad, 2) / 32767.f;
+            } else if( SDL_JoystickGetAxis(game_pad, 2) > JOYSTICK_DEAD_ZONE ) { // Right of dead zone
+                camera.rotation.y -= 0.04 * SDL_JoystickGetAxis(game_pad, 2) / 32767.f;
+            }
+		}
 
 		// Keyboard Input
 		const uint8_t* key_state = SDL_GetKeyboardState(NULL);	
@@ -455,9 +507,8 @@ int main(int argc, char* args[]) {
 			}
 		}
 
-		global_counter++;
-		cube_entity2.rotation.x += 0.01;
-		cube_entity2.rotation.y += 0.01;
+		// cube_entity2.rotation.x += 0.01;
+		cube_entity2.rotation.z += 0.01;
 		
 		// Where all the rendering happens
 		draw(&pixel_buffer, &camera, entity_list, entity_count);
