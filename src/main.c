@@ -10,22 +10,27 @@
 #define M_PI 3.14159265358979323846
 
 // Screen constants
-const int SCREEN_WIDTH = 1366;
+const int SCREEN_WIDTH  = 1366;
 const int SCREEN_HEIGHT = 768;
 
 // Projection Constants
-const int VIEW_WIDTH = 1366;
+const int VIEW_WIDTH  = 1366;
 const int VIEW_HEIGHT = 768;
-const int Z_FAR = 500;
-const int Z_NEAR = 10;
-const float FOV_X = 10000;
-const float FOV_Y = 10000;
+const int Z_FAR 	  = 500;
+const int Z_NEAR 	  = 10;
+const float FOV_X  	  = 10000;
+const float FOV_Y     = 10000;
 
 typedef struct {
 	uint32_t* pixels;
 	int width;
 	int height;
 } PixelBuffer;
+
+typedef struct {
+	int x;
+	int y;
+} Vector2Int;
 
 typedef struct {
 	float x;
@@ -140,12 +145,102 @@ Vector3 transform(Matrix4 matrix, Vector3 vector, float w) {
 	return result;
 }
 
+void rasterize_polygon(Triangle poly, uint32_t color, PixelBuffer* pixel_buffer) {
+	int top_index = 0;
+	int left_index = 0;
+	int right_index = 0;
+
+	// Find top vertex
+	for (int i = 1; i < 3; i++) {
+		if (poly.vectors[i].y < poly.vectors[top_index].y) {
+			top_index = i;
+		} else if (poly.vectors[i].y == poly.vectors[top_index].y) {
+			if (poly.vectors[i].x < poly.vectors[(i + 1) % 3].x ||
+				poly.vectors[i].x < poly.vectors[(i + 2) % 3].x) {
+				top_index = i;
+			}
+		}
+	}
+
+	// Find left and right vertices
+	left_index = (top_index + 2) % 3;
+	right_index = (top_index + 1) % 3;
+
+	// Initialize vertices for triangle drawing
+	Vector2Int top_L = {(int)poly.vectors[top_index].x, (int)poly.vectors[top_index].y};
+	Vector2Int top_R = top_L;
+	Vector2Int left = {(int)poly.vectors[left_index].x, (int)poly.vectors[left_index].y};
+	Vector2Int right = {(int)poly.vectors[right_index].x, (int)poly.vectors[right_index].y};
+
+	// Line drawing variables for left line
+	int dx_L = abs(left.x - top_L.x);
+	int dy_L = abs(left.y - top_L.y);
+	int sx_L = top_L.x < left.x ? 1 : -1;
+	int sy_L = top_L.y < left.y ? 1 : -1;
+	int err_L = (dx_L > dy_L ? dx_L : -dy_L) / 2;
+	int e2L;
+
+	// Line drawing variables for right line
+	int dx_R = abs(right.x - top_R.x);
+    int dy_R = abs(right.y - top_R.y);
+    int sx_R = top_R.x < right.x ? 1 : -1;
+    int sy_R = top_R.y < right.y ? 1 : -1; 
+    int err_R = (dx_R > dy_R ? dx_R : -dy_R) / 2;
+    int e2R;
+
+	for (;;) {
+		// Draw current scanline
+		{
+			for (;;) {
+				// Handle breakpoint on right line
+				if (top_R.x == right.x && top_R.y == right.y) {
+					right = left;
+					dx_R = abs(right.x - top_R.x);
+					dy_R = abs(right.y - top_R.y);
+					sx_R = top_R.x < right.x ? 1 : -1;
+					sy_R = top_R.y < right.y ? 1 : -1;
+					err_R = (dx_R > dy_R ? dx_R : -dy_R) / 2;
+				}
+
+				if (top_L.y == top_R.y) break;
+				e2R = err_R;
+				if (e2R > -dx_R) { err_R -= dy_R; top_R.x += sx_R; }
+				if (e2R < dy_R) { err_R += dx_R; top_R.y += sy_R; }
+			}
+
+			// Fill scanline
+			for (int i = top_L.x; i < top_R.x; i++) {
+				Vector3 temp = {(int)i, (int)top_L.y, 0};
+				draw_vector(temp, color, pixel_buffer);
+			}
+		}
+		if (top_L.x == left.x && top_L.y == left.y) {
+			if (right.y <= top_L.y) {
+				break;
+			} else {
+				left = right;
+				dx_L = abs(left.x - top_L.x);
+				dy_L = abs(left.y - top_L.y);
+				sx_L = top_L.x < left.x ? 1 : -1;
+				sy_L = top_L.y < left.y ? 1 : -1;
+				err_L = (dx_L > dy_L ? dx_L : -dy_L) / 2;
+			}
+		}
+		e2L = err_L;
+		if (e2L > -dx_L) { err_L -= dy_L; top_L.x += sx_L; }
+		if (e2L < dy_L) { err_L += dx_L; top_L.y += sy_L; }
+	}
+}
+
 void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int entityCount) {
+	bool should_draw_wireframe = false;
+
 	for (int k = 0; k < entityCount; k++) {
 		Entity* entity = entityList[k];
 
 		// Rotation angles, y-axis then x-axis
-		uint32_t lineColor = 0xffffffff;
+		uint32_t line_color = 0xffffffff;
+        uint32_t fill_color = 0x55555555;
 
 		// Scale Matrix
 		Matrix4 scale_mat;
@@ -285,17 +380,23 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 			}
 			
 			// Only draw lines between vectors that haven't been culled
-			if (!is_vector_culled[0] && !is_vector_culled[1]) {
-				draw_line(display_poly.vectors[0], display_poly.vectors[1], lineColor, pixel_buffer);		
-			}		
+			if (should_draw_wireframe) {
+				if (!is_vector_culled[0] && !is_vector_culled[1]) {
+					draw_line(display_poly.vectors[0], display_poly.vectors[1], line_color, pixel_buffer);		
+				}		
 
-			if(!is_vector_culled[1] && !is_vector_culled[2]) {
-				draw_line(display_poly.vectors[1], display_poly.vectors[2], lineColor, pixel_buffer);
-			}		
+				if (!is_vector_culled[1] && !is_vector_culled[2]) {
+					draw_line(display_poly.vectors[1], display_poly.vectors[2], line_color, pixel_buffer);
+				}		
 
-			if(!is_vector_culled[0] && !is_vector_culled[2]) {
-				draw_line(display_poly.vectors[2], display_poly.vectors[0], lineColor, pixel_buffer);		
+				if (!is_vector_culled[0] && !is_vector_culled[2]) {
+					draw_line(display_poly.vectors[2], display_poly.vectors[0], line_color, pixel_buffer);		
+				}				
 			}
+
+			if (!(is_vector_culled[0] || is_vector_culled[1] || is_vector_culled[2])) 
+			rasterize_polygon(display_poly, fill_color, pixel_buffer);
+			fill_color = ~fill_color;
 		}
 	}
 }
@@ -366,6 +467,7 @@ int main(int argc, char* args[]) {
 	SDL_Texture* screen_texture = NULL;
 	uint32_t* pixels = NULL;
 	bool running = true;
+	bool paused = false;
 
 	/**
 	 * SDL Initialization
@@ -413,9 +515,9 @@ int main(int argc, char* args[]) {
 
 	// Initialize entities
 	Entity camera = {{0}};
-	Entity cube_entity = {  .position={0, 0, -200},    .mesh=monkey, 
-                            .rotation={-M_PI/2, 0, 0}, .scale={100, 100, 100}};
-	Entity cube_entity2 = { .position={300, 0, 200},   .mesh=cube,
+	Entity cube_entity = {  .position={0, 0, -200},    	    .mesh=monkey, 
+                            .rotation={-M_PI / 2, 0, 0},    .scale={100, 100, 100}};
+	Entity cube_entity2 = { .position={300, 0, 200},        .mesh=cube,
                             .scale   ={50, 50, 50}};
 
 	// Temp corridor
@@ -505,10 +607,16 @@ int main(int argc, char* args[]) {
 			if (key_state[SDL_SCANCODE_RIGHT]) {
 				camera.rotation.y -= 0.02;
 			}
+			if (key_state[SDL_SCANCODE_SPACE]) {
+				paused = !paused;
+			}
 		}
 
-		// cube_entity2.rotation.x += 0.01;
-		cube_entity2.rotation.z += 0.01;
+		if (!paused) {
+			cube_entity2.rotation.x += 0.01;
+			cube_entity2.rotation.y += 0.01;
+			// cube_entity2.rotation.z += 0.01;			
+		}
 		
 		// Where all the rendering happens
 		draw(&pixel_buffer, &camera, entity_list, entity_count);
