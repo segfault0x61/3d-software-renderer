@@ -10,12 +10,12 @@
 #define M_PI 3.14159265358979323846
 
 // Screen constants
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 300;
+const int SCREEN_HEIGHT = 300;
 
 // Projection Constants
-const int VIEW_WIDTH = 640;
-const int VIEW_HEIGHT = 480;
+const int VIEW_WIDTH = 1366;
+const int VIEW_HEIGHT = 768;
 const int Z_FAR = 500;
 const int Z_NEAR = 10;
 const float FOV_X = 1280;
@@ -379,7 +379,7 @@ int main(int argc, char* args[]) {
 		SDL_WINDOWPOS_CENTERED,
 		SCREEN_WIDTH,
 		SCREEN_HEIGHT,
-		0 // SDL_WINDOW_FULLSCREEN_DESKTOP
+		SDL_WINDOW_FULLSCREEN_DESKTOP
 	);
 
 	if (window == NULL) {
