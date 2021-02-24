@@ -10,16 +10,16 @@
 #define M_PI 3.14159265358979323846
 
 // Screen constants
-const int SCREEN_WIDTH = 640;
-const int SCREEN_HEIGHT = 480;
+const int SCREEN_WIDTH = 1366;
+const int SCREEN_HEIGHT = 768;
 
 // Projection Constants
 const int VIEW_WIDTH = 1366;
 const int VIEW_HEIGHT = 768;
 const int Z_FAR = 500;
 const int Z_NEAR = 10;
-const float FOV_X = 1280;
-const float FOV_Y = 960;
+const float FOV_X = 10000;
+const float FOV_Y = 10000;
 
 typedef struct {
 	uint32_t* pixels;
@@ -398,6 +398,9 @@ int main(int argc, char* args[]) {
 		SCREEN_HEIGHT
 	);
 
+	// Open joystick
+	SDL_Joystick* game_pad = SDL_JoystickOpen(0);
+
 	pixels = (uint32_t*) malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
 	PixelBuffer pixel_buffer = {pixels, SCREEN_WIDTH, SCREEN_HEIGHT};
 
@@ -406,21 +409,21 @@ int main(int argc, char* args[]) {
 	 */
 	Mesh cube  = load_mesh_from_file("./res/meshes/cube.raw");
 	Mesh plane = load_mesh_from_file("./res/meshes/plane.raw");
-	Mesh monkey  = load_mesh_from_file("./res/meshes/monkeyhd.raw");
+	Mesh monkey  = load_mesh_from_file("./res/meshes/monkey.raw");
 
 	// Initialize entities
 	Entity camera = {{0}};
 	Entity cube_entity = {  .position={0, 0, -200},    .mesh=monkey, 
-                           .rotation={-M_PI/2, 0, 0}, .scale={100, 100, 100}};
+                            .rotation={-M_PI/2, 0, 0}, .scale={100, 100, 100}};
 	Entity cube_entity2 = { .position={300, 0, 200},   .mesh=cube,
-                           .scale   ={50, 50, 50}};
+                            .scale   ={50, 50, 50}};
 
 	// Temp corridor
-	Entity hall1 = { .position={-300, 0, 200}, .mesh=plane,
+	Entity hall1 = { .position={-300, 0, 200},  .mesh=plane,
                      .scale   ={50, 50, 50}};
 	Entity hall2 = { .position={-300, 50, 150}, .mesh=plane,
-                     .rotation={M_PI/2, 0, 0}, .scale={50, 50, 50}};
-	Entity hall3 = { .position={-300, 0, 100}, .mesh=plane,
+                     .rotation={M_PI/2, 0, 0},  .scale={50, 50, 50}};
+	Entity hall3 = { .position={-300, 0, 100},  .mesh=plane,
                      .scale   ={50, 50, 50}};
 
 	// Create entity list and fill with entities
@@ -433,7 +436,9 @@ int main(int argc, char* args[]) {
 	entity_list[3] = &hall2;
 	entity_list[4] = &hall3;
 	
-	// Main Loop
+	/**
+	 * Main Loop
+	 */
 	while (running) {
 		int current_time = SDL_GetTicks();
 		
@@ -446,6 +451,33 @@ int main(int argc, char* args[]) {
 				break;
 			}
     	}
+
+		// Joystick Input
+		{
+			const int JOYSTICK_DEAD_ZONE = 8000;
+			int move_vel = 3;
+			if (SDL_JoystickGetAxis(game_pad, 0) < -JOYSTICK_DEAD_ZONE) {
+				camera.position.z += move_vel * cosf(camera.rotation.y - M_PI / 2);
+				camera.position.x += move_vel * sinf(camera.rotation.y - M_PI / 2);
+			} else if (SDL_JoystickGetAxis(game_pad, 0) > JOYSTICK_DEAD_ZONE) { // Right of deadzone
+				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI / 2);
+				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI / 2);
+			} 
+
+			if (SDL_JoystickGetAxis(game_pad, 1) < -JOYSTICK_DEAD_ZONE) { // Left of deadzone
+				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI);
+				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI);
+			} else if(SDL_JoystickGetAxis(game_pad, 1) > JOYSTICK_DEAD_ZONE) { // Right of dead zone
+                camera.position.z += move_vel * cosf(camera.rotation.y);
+				camera.position.x += move_vel * sinf(camera.rotation.y);
+            }
+            
+            if(SDL_JoystickGetAxis(game_pad, 2) < -JOYSTICK_DEAD_ZONE) { // Left of dead zone
+                camera.rotation.y += 0.04 * -SDL_JoystickGetAxis(game_pad, 2) / 32767.f;
+            } else if( SDL_JoystickGetAxis(game_pad, 2) > JOYSTICK_DEAD_ZONE ) { // Right of dead zone
+                camera.rotation.y -= 0.04 * SDL_JoystickGetAxis(game_pad, 2) / 32767.f;
+            }
+		}
 
 		// Keyboard Input
 		const uint8_t* key_state = SDL_GetKeyboardState(NULL);	
@@ -475,8 +507,8 @@ int main(int argc, char* args[]) {
 			}
 		}
 
-		cube_entity2.rotation.x += 0.01;
-		cube_entity2.rotation.y += 0.01;
+		// cube_entity2.rotation.x += 0.01;
+		cube_entity2.rotation.z += 0.01;
 		
 		// Where all the rendering happens
 		draw(&pixel_buffer, &camera, entity_list, entity_count);
