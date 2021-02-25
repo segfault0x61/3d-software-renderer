@@ -23,6 +23,7 @@ const float FOV_Y     = 10000;
 
 typedef struct {
 	uint32_t* pixels;
+	int32_t* z_buffer;
 	int width;
 	int height;
 } PixelBuffer;
@@ -69,8 +70,10 @@ void draw_rect(int x, int y, int w, int h, uint32_t color, PixelBuffer* pixel_bu
 
 void draw_vector(Vector3 vector, uint32_t color, PixelBuffer* pixel_buffer) {
 	if (vector.x >= 0 && vector.x < pixel_buffer->width &&
-		vector.y >= 0 && vector.y < pixel_buffer->height) {
+		vector.y >= 0 && vector.y < pixel_buffer->height && 
+		vector.z < pixel_buffer->z_buffer[(int)vector.y * pixel_buffer->width + (int)vector.x]) {
 		pixel_buffer->pixels[(int)vector.y  * pixel_buffer->width + (int)vector.x] = color;
+		pixel_buffer->z_buffer[(int)vector.y * pixel_buffer->width + (int)vector.x] = vector.z;
 	}
 }
 
@@ -210,7 +213,7 @@ void rasterize_polygon(Triangle poly, uint32_t color, PixelBuffer* pixel_buffer)
 
 			// Fill scanline
 			for (int i = top_L.x; i < top_R.x; i++) {
-				Vector3 temp = {(int)i, (int)top_L.y, 0};
+				Vector3 temp = {(int)i, (int)top_L.y, poly.vectors[0].z};
 				draw_vector(temp, color, pixel_buffer);
 			}
 		}
@@ -338,10 +341,10 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 		}
 		Matrix4 correct_for_screen;
 		{
-			float temp[16] = { SCREEN_WIDTH/2, 0              , 0, SCREEN_WIDTH/2 ,
-							   0             , SCREEN_HEIGHT/2, 0, SCREEN_HEIGHT/2,
-							   0             , 0              , 1, 1              ,
-							   0             , 0              , 0, 1              };
+			float temp[16] = { SCREEN_WIDTH/2, 0               ,0         , SCREEN_WIDTH/2 ,
+						 	   0             , SCREEN_HEIGHT/2 ,0         , SCREEN_HEIGHT/2,
+						 	   0             , 0               ,INT_MAX/2 , INT_MAX/2    ,
+		 	 				   0             , 0               ,0         , 1              };
 			memcpy((void*) correct_for_screen.values, temp, 16 * sizeof(float));
 		}
 		
@@ -377,6 +380,11 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 				// Projection Space ---> Screen Friendly
 				display_poly.vectors[j] = transform(correct_for_screen, display_poly.vectors[j], 1);
 			}
+
+			if (!(is_vector_culled[0] || is_vector_culled[1] || is_vector_culled[2]) && should_draw_surfaces) {
+				rasterize_polygon(display_poly, fill_color, pixel_buffer);
+			}
+			fill_color = ~fill_color;
 			
 			// Only draw lines between vectors that haven't been culled
 			if (should_draw_wireframe) {
@@ -392,11 +400,6 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 					draw_line(display_poly.vectors[2], display_poly.vectors[0], line_color, pixel_buffer);		
 				}				
 			}
-
-			if (!(is_vector_culled[0] || is_vector_culled[1] || is_vector_culled[2]) && should_draw_surfaces) {
-				rasterize_polygon(display_poly, fill_color, pixel_buffer);
-			}
-			fill_color = ~fill_color;
 		}
 	}
 }
@@ -466,6 +469,7 @@ int main(int argc, char* args[]) {
 	SDL_Renderer* renderer = NULL;
 	SDL_Texture* screen_texture = NULL;
 	uint32_t* pixels = NULL;
+	int32_t* z_buffer = NULL;
 	bool running = true;
 	bool paused = false;
 	bool should_draw_wireframe = false;
@@ -506,7 +510,11 @@ int main(int argc, char* args[]) {
 	SDL_Joystick* game_pad = SDL_JoystickOpen(0);
 
 	pixels = (uint32_t*) malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
-	PixelBuffer pixel_buffer = {pixels, SCREEN_WIDTH, SCREEN_HEIGHT};
+	z_buffer = (int32_t*) malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(int32_t));
+	PixelBuffer pixel_buffer = {pixels, z_buffer, SCREEN_WIDTH, SCREEN_HEIGHT};
+	for (int i = 0; i < pixel_buffer.width * pixel_buffer.height; i++) {
+		pixel_buffer.z_buffer[i] = INT_MAX;
+	}
 
 	/**
 	 * Initialize meshes and entities
@@ -639,6 +647,11 @@ int main(int argc, char* args[]) {
 
 		// Clear the pixel buffer
 		memset((void*)pixel_buffer.pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+
+		// Clear the z-buffer
+		for (int i = 0; i < pixel_buffer.width * pixel_buffer.height; i++) {
+			pixel_buffer.z_buffer[i] = INT_MAX;
+		}
 
 		// Lock to 60 fps
 		int delta = SDL_GetTicks() - current_time;
