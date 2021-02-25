@@ -232,9 +232,8 @@ void rasterize_polygon(Triangle poly, uint32_t color, PixelBuffer* pixel_buffer)
 	}
 }
 
-void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int entityCount) {
-	bool should_draw_wireframe = false;
-
+void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int entityCount,
+		  bool should_draw_wireframe, bool should_draw_surfaces) {
 	for (int k = 0; k < entityCount; k++) {
 		Entity* entity = entityList[k];
 
@@ -394,8 +393,9 @@ void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int en
 				}				
 			}
 
-			if (!(is_vector_culled[0] || is_vector_culled[1] || is_vector_culled[2])) 
-			rasterize_polygon(display_poly, fill_color, pixel_buffer);
+			if (!(is_vector_culled[0] || is_vector_culled[1] || is_vector_culled[2]) && should_draw_surfaces) {
+				rasterize_polygon(display_poly, fill_color, pixel_buffer);
+			}
 			fill_color = ~fill_color;
 		}
 	}
@@ -468,6 +468,8 @@ int main(int argc, char* args[]) {
 	uint32_t* pixels = NULL;
 	bool running = true;
 	bool paused = false;
+	bool should_draw_wireframe = false;
+	bool should_draw_surfaces = true;
 
 	/**
 	 * SDL Initialization
@@ -551,6 +553,18 @@ int main(int argc, char* args[]) {
 			case SDL_QUIT:
 				running = false;
 				break;
+			case SDL_KEYDOWN:
+				switch (event.key.keysym.sym) {
+				case SDLK_SPACE:
+					paused = !paused;
+					break;
+				case SDLK_1:
+					should_draw_wireframe = !should_draw_wireframe;
+					break;
+				case SDLK_2:
+					should_draw_surfaces = !should_draw_surfaces;
+					break;
+				}
 			}
     	}
 
@@ -607,9 +621,6 @@ int main(int argc, char* args[]) {
 			if (key_state[SDL_SCANCODE_RIGHT]) {
 				camera.rotation.y -= 0.02;
 			}
-			if (key_state[SDL_SCANCODE_SPACE]) {
-				paused = !paused;
-			}
 		}
 
 		if (!paused) {
@@ -619,7 +630,7 @@ int main(int argc, char* args[]) {
 		}
 		
 		// Where all the rendering happens
-		draw(&pixel_buffer, &camera, entity_list, entity_count);
+		draw(&pixel_buffer, &camera, entity_list, entity_count, should_draw_wireframe, should_draw_surfaces);
 
 		// Rendering pixel buffer to the screen
 		SDL_UpdateTexture(screen_texture, NULL, pixel_buffer.pixels, SCREEN_WIDTH * sizeof(uint32_t));		
