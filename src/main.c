@@ -7,6 +7,10 @@
 
 #include <SDL2/SDL.h>
 
+#include "engine_types.h"
+#include "level_loader.h"
+#include "meshes.h"
+
 #define M_PI 3.14159265358979323846
 
 // Screen constants
@@ -20,45 +24,6 @@ const int Z_FAR 	  = 500;
 const int Z_NEAR 	  = 10;
 const float FOV_X  	  = 10000;
 const float FOV_Y     = 10000;
-
-typedef struct {
-	uint32_t* pixels;
-	int32_t* z_buffer;
-	int width;
-	int height;
-} PixelBuffer;
-
-typedef struct {
-	int x;
-	int y;
-} Vector2Int;
-
-typedef struct {
-	float x;
-	float y;
-	float z;
-} Vector3;
-
-typedef struct {
-	Vector3 vectors[3];
-} Triangle;
-
-typedef struct {
-	float values[16];
-} Matrix4;
-
-typedef struct {
-	// Vector3 origin;
-	int poly_count;
-	Triangle* polygons;
-} Mesh;
-
-typedef struct {
-	Vector3 position;
-	Vector3 rotation;
-	Vector3 scale;
-	Mesh mesh;
-} Entity;
 
 void draw_rect(int x, int y, int w, int h, uint32_t color, PixelBuffer* pixel_buffer) {
 	for (int i = y; i < y + h; ++i) {
@@ -171,9 +136,9 @@ void rasterize_polygon(Triangle poly, uint32_t color, PixelBuffer* pixel_buffer)
 
 	// Initialize vertices for triangle drawing
 	Vector2Int top_L = {(int)poly.vectors[top_index].x, (int)poly.vectors[top_index].y};
-	Vector2Int top_R = top_L;
 	Vector2Int left = {(int)poly.vectors[left_index].x, (int)poly.vectors[left_index].y};
 	Vector2Int right = {(int)poly.vectors[right_index].x, (int)poly.vectors[right_index].y};
+	Vector2Int top_R = top_L;
 
 	// Line drawing variables for left line
 	int dx_L = abs(left.x - top_L.x);
@@ -235,10 +200,10 @@ void rasterize_polygon(Triangle poly, uint32_t color, PixelBuffer* pixel_buffer)
 	}
 }
 
-void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity** entityList, int entityCount,
+void draw(PixelBuffer* pixel_buffer, Entity* camera, Entity* entity_list, int entity_count,
 		  bool should_draw_wireframe, bool should_draw_surfaces) {
-	for (int k = 0; k < entityCount; k++) {
-		Entity* entity = entityList[k];
+	for (int k = 0; k < entity_count; k++) {
+		Entity* entity = &entity_list[k];
 
 		// Rotation angles, y-axis then x-axis
 		uint32_t line_color = 0xffffffff;
@@ -519,34 +484,39 @@ int main(int argc, char* args[]) {
 	/**
 	 * Initialize meshes and entities
 	 */
-	Mesh cube  = load_mesh_from_file("./res/meshes/cube.raw");
-	Mesh plane = load_mesh_from_file("./res/meshes/plane.raw");
-	Mesh monkey  = load_mesh_from_file("./res/meshes/monkey.raw");
+	cube_mesh  = load_mesh_from_file("./res/meshes/cube.raw");
+	plane = load_mesh_from_file("./res/meshes/plane.raw");
+	monkey  = load_mesh_from_file("./res/meshes/monkey.raw");
+	monkey_hd  = load_mesh_from_file("./res/meshes/monkeyhd.raw");
+
+	// TEMP
+	Level level = load_level("./res/levels/level_2.txt");
+	EntityArray entities = create_level_entities(level);
 
 	// Initialize entities
 	Entity camera = {{0}};
-	Entity cube_entity = {  .position={0, 0, -200},    	    .mesh=monkey, 
-                            .rotation={-M_PI / 2, 0, 0},    .scale={100, 100, 100}};
-	Entity cube_entity2 = { .position={300, 0, 200},        .mesh=cube,
-                            .scale   ={50, 50, 50}};
+	// Entity cube_entity = {  .position={0, 0, -200},    	    .mesh=monkey, 
+    //                         .rotation={-M_PI / 2, 0, 0},    .scale={100, 100, 100}};
+	// Entity cube_entity2 = { .position={300, 0, 200},        .mesh=cube,
+    //                         .scale   ={50, 50, 50}};
 
 	// Temp corridor
-	Entity hall1 = { .position={-300, 0, 200},  .mesh=plane,
-                     .scale   ={50, 50, 50}};
-	Entity hall2 = { .position={-300, 50, 150}, .mesh=plane,
-                     .rotation={M_PI/2, 0, 0},  .scale={50, 50, 50}};
-	Entity hall3 = { .position={-300, 0, 100},  .mesh=plane,
-                     .scale   ={50, 50, 50}};
+	// Entity hall1 = { .position={-300, 0, 200},  .mesh=plane,
+    //                  .scale   ={50, 50, 50}};
+	// Entity hall2 = { .position={-300, 50, 150}, .mesh=plane,
+    //                  .rotation={M_PI/2, 0, 0},  .scale={50, 50, 50}};
+	// Entity hall3 = { .position={-300, 0, 100},  .mesh=plane,
+    //                  .scale   ={50, 50, 50}};
 
 	// Create entity list and fill with entities
-	int entity_count = 5;
+	// int entity_count = 5;
 
-	Entity** entity_list = (Entity**)malloc(entity_count * sizeof(Entity*));
-	entity_list[0] = &cube_entity;
-	entity_list[1] = &cube_entity2;
-	entity_list[2] = &hall1;
-	entity_list[3] = &hall2;
-	entity_list[4] = &hall3;
+	// Entity** entity_list = (Entity**)malloc(entity_count * sizeof(Entity*));
+	// entity_list[0] = &cube_entity;
+	// entity_list[1] = &cube_entity2;
+	// entity_list[2] = &hall1;
+	// entity_list[3] = &hall2;
+	// entity_list[4] = &hall3;
 	
 	/**
 	 * Main Loop
@@ -632,13 +602,13 @@ int main(int argc, char* args[]) {
 		}
 
 		if (!paused) {
-			cube_entity2.rotation.x += 0.01;
-			cube_entity2.rotation.y += 0.01;
+			// cube_entity2.rotation.x += 0.01;
+			// cube_entity2.rotation.y += 0.01;
 			// cube_entity2.rotation.z += 0.01;			
 		}
 		
 		// Where all the rendering happens
-		draw(&pixel_buffer, &camera, entity_list, entity_count, should_draw_wireframe, should_draw_surfaces);
+		draw(&pixel_buffer, &camera, entities.data, entities.length, should_draw_wireframe, should_draw_surfaces);
 
 		// Rendering pixel buffer to the screen
 		SDL_UpdateTexture(screen_texture, NULL, pixel_buffer.pixels, SCREEN_WIDTH * sizeof(uint32_t));		
