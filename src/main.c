@@ -15,8 +15,8 @@
 #define M_PI 3.14159265358979323846
 
 // Screen constants
-static const int SCREEN_WIDTH  = 427;
-static const int SCREEN_HEIGHT = 240;
+static const int SCREEN_WIDTH  = 854;
+static const int SCREEN_HEIGHT = 480;
 
 int main(int argc, char* args[]) {
 	/**
@@ -66,6 +66,8 @@ int main(int argc, char* args[]) {
 	// Load level from file and add entities to entity list
 	Level level = load_level("./res/levels/level_2.txt");
 	EntityArray entities = create_level_entities(level);
+	Entity temp = {.position = {-200, 0, -200}, .mesh = monkey, .scale = {100, 100, 100}};
+    entities.data[0] = temp;
 
 	// Initialize entities
 	Entity camera = {{0}};
@@ -79,11 +81,14 @@ int main(int argc, char* args[]) {
 	bool should_draw_wireframe = false;
 	bool should_draw_surfaces = true;
 
+	// Temp framerate display counter
+	int framerate_display_delay_counter = 0;
+
 	/**
 	 * Main Loop
 	 */
 	while (running) {
-		int current_time = SDL_GetTicks();
+		int frame_start_time = SDL_GetTicks();
 		
 		// SDL Event Loop
 		SDL_Event event;
@@ -103,6 +108,7 @@ int main(int argc, char* args[]) {
 							SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
 						}
 					}
+					break;
 				case SDLK_SPACE:
 					paused = !paused;
 					break;
@@ -121,19 +127,19 @@ int main(int argc, char* args[]) {
 			const int JOYSTICK_DEAD_ZONE = 8000;
 			int move_vel = 3;
 			if (SDL_JoystickGetAxis(game_pad, 0) < -JOYSTICK_DEAD_ZONE) {
-				camera.position.z += move_vel * cosf(camera.rotation.y - M_PI / 2);
-				camera.position.x += move_vel * sinf(camera.rotation.y - M_PI / 2);
-			} else if (SDL_JoystickGetAxis(game_pad, 0) > JOYSTICK_DEAD_ZONE) { // Right of deadzone
 				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI / 2);
 				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI / 2);
+			} else if (SDL_JoystickGetAxis(game_pad, 0) > JOYSTICK_DEAD_ZONE) { // Right of deadzone
+				camera.position.z += move_vel * cosf(camera.rotation.y - M_PI / 2);
+				camera.position.x += move_vel * sinf(camera.rotation.y - M_PI / 2);
 			} 
 
 			if (SDL_JoystickGetAxis(game_pad, 1) < -JOYSTICK_DEAD_ZONE) { // Left of deadzone
-				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI);
-				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI);
-			} else if(SDL_JoystickGetAxis(game_pad, 1) > JOYSTICK_DEAD_ZONE) { // Right of dead zone
-                camera.position.z += move_vel * cosf(camera.rotation.y);
+				camera.position.z += move_vel * cosf(camera.rotation.y);
 				camera.position.x += move_vel * sinf(camera.rotation.y);
+			} else if(SDL_JoystickGetAxis(game_pad, 1) > JOYSTICK_DEAD_ZONE) { // Right of dead zone
+                camera.position.z += move_vel * cosf(camera.rotation.y + M_PI);
+				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI);
             }
             
             if(SDL_JoystickGetAxis(game_pad, 2) < -JOYSTICK_DEAD_ZONE) { // Left of dead zone
@@ -147,20 +153,20 @@ int main(int argc, char* args[]) {
 		{
 			int move_vel = 3; 
 			if (key_state[SDL_SCANCODE_A]) {
-				camera.position.z += move_vel * cosf(camera.rotation.y - M_PI/2);
-				camera.position.x += move_vel * sinf(camera.rotation.y - M_PI/2);
-			}
-			if (key_state[SDL_SCANCODE_D]) {
 				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI/2);
 				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI/2);
 			}
-			if (key_state[SDL_SCANCODE_S]) {
-				camera.position.z += move_vel * cosf(camera.rotation.y);
-				camera.position.x += move_vel * sinf(camera.rotation.y);
+			if (key_state[SDL_SCANCODE_D]) {
+				camera.position.z += move_vel * cosf(camera.rotation.y - M_PI/2);
+				camera.position.x += move_vel * sinf(camera.rotation.y - M_PI/2);
 			}
-			if (key_state[SDL_SCANCODE_W]) {
+			if (key_state[SDL_SCANCODE_S]) {
 				camera.position.z += move_vel * cosf(camera.rotation.y + M_PI);
 				camera.position.x += move_vel * sinf(camera.rotation.y + M_PI);
+			}
+			if (key_state[SDL_SCANCODE_W]) {
+				camera.position.z += move_vel * cosf(camera.rotation.y);
+				camera.position.x += move_vel * sinf(camera.rotation.y);
 			}
 			if (key_state[SDL_SCANCODE_LEFT]) {
 				camera.rotation.y += 0.02;
@@ -171,7 +177,8 @@ int main(int argc, char* args[]) {
 		}
 
 		if (!paused) {
-		
+            entities.data[0].rotation.x += 0.01;
+            entities.data[0].rotation.y += 0.01;		
 		}
 		
 		// Send game entities to graphics engine to be rendered
@@ -191,10 +198,13 @@ int main(int argc, char* args[]) {
 		}
 
 		// Lock to 60 fps
-		int delta = SDL_GetTicks() - current_time;
+		int delta = SDL_GetTicks() - frame_start_time;
 		if (delta < 1000/60) {
 			SDL_Delay(1000/60 - delta);
 		}
+		framerate_display_delay_counter = (framerate_display_delay_counter + 1) % 30;
+        if (framerate_display_delay_counter == 0)
+            SDL_Log("FPS: %f", 1000.f/(SDL_GetTicks() - frame_start_time));		
 	}
 
 	return 0;

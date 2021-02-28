@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <limits.h>
 #include <stdlib.h>
 
 #include <SDL2/SDL.h>
@@ -8,20 +7,12 @@
 #include "meshes.h"
 
 Level load_level(char* file_name) {
-    // Replace relative path with realpath for Linux
-    char full_file_name[256];
     Level level;
 
-    #ifdef __linux__
-        realpath(file_name, full_file_name);
-    #else
-        strcpy(full_file_name, file_name);
-    #endif
-
-    FILE* file = fopen(full_file_name, "r");
+    FILE* file = fopen(file_name, "r");
     if (file == NULL) {
         SDL_Log("Unable to open Level file.");
-        SDL_Log(full_file_name);
+        SDL_Log(file_name);
     }
 
     // Save the beginning pos of the file
